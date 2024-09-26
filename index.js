@@ -79,6 +79,74 @@ app.put('/api/sponsors/:id', async (req, res) => {
     }
 });
 
+app.get('/api/sponsorships', async (req, res) => {
+    try {
+        const result = await pool.query('SELECT \n' +
+            '    sp.sponsorship_id,\n' +
+            '    s.name AS sponsor_name,\n' +
+            '    p.name AS program_name,\n' +
+            '    sp.amount,\n' +
+            '    sp.notes\n' +
+            'FROM \n' +
+            '    sponsorship.sponsorships sp\n' +
+            'JOIN \n' +
+            '    sponsorship.sponsors s ON sp.sponsor_id = s.sponsor_id\n' +
+            'JOIN \n' +
+            '    sponsorship.programs p ON sp.program_id = p.program_id;\n');
+        res.json(result.rows);
+    } catch (error) {
+        console.error('Error retrieving sponsorships:', error);
+        res.status(500).json({ error: 'An error occurred while retrieving sponsorships' });
+    }
+});
+
+
+app.put('/api/sponsorships/:id', async (req, res) => {
+    const sponsorshipId = req.params.id;
+    const { sponsor_name, program_name, amount, notes } = req.body;
+
+    try {
+        // Retrieve the sponsor_id from the sponsors table
+        const sponsorResult = await pool.query(
+            'SELECT sponsor_id FROM sponsorship.sponsors WHERE name = $1',
+            [sponsor_name]
+        );
+
+        if (sponsorResult.rowCount === 0) {
+            return res.status(404).json({ error: 'Sponsor not found' });
+        }
+
+        const sponsor_id = sponsorResult.rows[0].sponsor_id;
+
+        // Retrieve the program_id from the programs table
+        const programResult = await pool.query(
+            'SELECT program_id FROM sponsorship.programs WHERE name = $1',
+            [program_name]
+        );
+
+        if (programResult.rowCount === 0) {
+            return res.status(404).json({ error: 'Program not found' });
+        }
+
+        const program_id = programResult.rows[0].program_id;
+
+        // Update the sponsorships table with the retrieved IDs
+        const updateResult = await pool.query(
+            'UPDATE sponsorship.sponsorships SET sponsor_id = $1, program_id = $2, amount = $3, notes = $4 WHERE sponsorship_id = $5 RETURNING *',
+            [sponsor_id, program_id, amount, notes, sponsorshipId]
+        );
+
+        if (updateResult.rowCount === 0) {
+            return res.status(404).json({ error: 'Sponsorship not found' });
+        }
+
+        res.json({ message: 'Sponsorship updated successfully', sponsorship: updateResult.rows[0] });
+    } catch (error) {
+        console.error('Error updating sponsorship:', error);
+        res.status(500).json({ error: 'An error occurred while updating the sponsorship' });
+    }
+});
+
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
     console.log(`Server running on port ${PORT}`);
